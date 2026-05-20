@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GEBCO Bathymetry Relief Map</title>
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <title>GEBCO 2025 Bathymetry - Area of Interest</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <style>
     html, body {
       height: 100%;
@@ -12,10 +12,9 @@
       margin: 0;
       background: #ffffff;
       color: #111111;
-      font-family: Arial, sans-serif;
+      font-family: Arial, Helvetica, sans-serif;
       overflow: hidden;
     }
-
     .page {
       height: 100vh;
       width: 100vw;
@@ -25,28 +24,31 @@
       padding: 10px;
       gap: 8px;
     }
-
     .header {
-      min-height: 42px;
+      min-height: 54px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
+      gap: 12px;
+      flex-wrap: wrap;
     }
-
     .title {
       font-size: 18px;
-      font-weight: bold;
+      font-weight: 700;
     }
-
+    .status {
+      font-size: 12px;
+      color: #444444;
+      margin-top: 2px;
+      max-width: 1100px;
+    }
     .controls {
       display: flex;
       gap: 8px;
       align-items: center;
       flex-wrap: wrap;
     }
-
-    button {
+    button, .file-label {
       background: #ffffff;
       color: #111111;
       border: 1px solid #777777;
@@ -54,24 +56,38 @@
       border-radius: 4px;
       cursor: pointer;
       font-size: 13px;
+      line-height: 1.2;
     }
-
-    button:hover {
-      background: #e6e6e6;
+    button:hover, .file-label:hover {
+      background: #e9e9e9;
     }
-
+    input[type="file"] {
+      display: none;
+    }
     #map {
       flex: 1;
       width: 100%;
       min-height: 0;
-      border: 1px solid #cccccc;
+      border: 1px solid #cfcfcf;
       border-radius: 6px;
       overflow: hidden;
+      background: #ffffff;
     }
-
-    .status {
-      font-size: 12px;
-      color: #555555;
+    #message {
+      position: absolute;
+      top: 88px;
+      left: 20px;
+      right: 20px;
+      z-index: 5;
+      padding: 12px 14px;
+      border: 1px solid #b5b5b5;
+      border-radius: 6px;
+      background: #fff8db;
+      color: #111111;
+      font-size: 13px;
+      line-height: 1.35;
+      display: none;
+      white-space: pre-wrap;
     }
   </style>
 </head>
@@ -80,34 +96,25 @@
     <div class="header">
       <div>
         <div class="title">GEBCO 2025 Bathymetry - Area of Interest</div>
-        <div class="status" id="status">Loading gebco_subset.json...</div>
+        <div class="status" id="status">Starting viewer...</div>
       </div>
       <div class="controls">
         <button type="button" onclick="plot2D()">2D Relief</button>
         <button type="button" onclick="plot3D()">3D Surface</button>
+        <label class="file-label" for="jsonFile">Load JSON manually</label>
+        <input id="jsonFile" type="file" accept=".json,application/json" />
       </div>
     </div>
+    <div id="message"></div>
     <div id="map"></div>
   </div>
-
   <script>
+    "use strict";
+
     let bathyData = null;
 
-    const defaultLeaseLon = [
-      -117.816670,
-      -116.066667,
-      -116.066667,
-      -117.816670,
-      -117.816670
-    ];
-
-    const defaultLeaseLat = [
-      11.08333,
-      11.08333,
-      9.89500,
-      9.89500,
-      11.08333
-    ];
+    const defaultLeaseLon = [-117.816670, -116.066667, -116.066667, -117.816670, -117.816670];
+    const defaultLeaseLat = [11.08333, 11.08333, 9.89500, 9.89500, 11.08333];
 
     const turboScale = [
       [0.00, "rgb(48,18,59)"],
@@ -120,37 +127,86 @@
       [1.00, "rgb(122,4,3)"]
     ];
 
+    window.addEventListener("error", event => {
+      showMessage("JavaScript error: " + event.message + "\nOpen the browser console for details.");
+    });
+
+    window.addEventListener("unhandledrejection", event => {
+      showMessage("Unhandled promise error: " + event.reason + "\nOpen the browser console for details.");
+    });
+
+    document.getElementById("jsonFile").addEventListener("change", async event => {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const rawData = JSON.parse(text);
+        useRawData(rawData, "Loaded " + file.name + " manually");
+      } catch (error) {
+        console.error(error);
+        showMessage("Could not read the selected JSON file. Error: " + error.message);
+      }
+    });
+
+    function setStatus(text) {
+      document.getElementById("status").textContent = text;
+    }
+
+    function showMessage(text) {
+      const message = document.getElementById("message");
+      message.textContent = text;
+      message.style.display = "block";
+      setStatus(text.split("\n")[0]);
+    }
+
+    function hideMessage() {
+      const message = document.getElementById("message");
+      message.textContent = "";
+      message.style.display = "none";
+    }
+
+    function assertPlotlyLoaded() {
+      if (!window.Plotly) {
+        throw new Error("Plotly did not load. Check internet access or allow https://cdn.plot.ly.");
+      }
+    }
+
     async function loadData() {
       try {
+        assertPlotlyLoaded();
+        setStatus("Loading gebco_subset.json...");
         const response = await fetch("gebco_subset.json", { cache: "no-store" });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
+        if (!response.ok) throw new Error("HTTP " + response.status);
         const rawData = await response.json();
-        bathyData = normalizeBathyData(rawData);
-
-        const zRange = getZRange(bathyData.z);
-        const message =
-          `Loaded gebco_subset.json | ` +
-          `Lon ${minValue(bathyData.lon).toFixed(4)} to ${maxValue(bathyData.lon).toFixed(4)} | ` +
-          `Lat ${minValue(bathyData.lat).toFixed(4)} to ${maxValue(bathyData.lat).toFixed(4)} | ` +
-          `Z ${zRange.zMin.toFixed(1)} to ${zRange.zMax.toFixed(1)} m`;
-
-        document.getElementById("status").textContent = message;
-        console.log(message);
-        console.log("lon length:", bathyData.lon.length);
-        console.log("lat length:", bathyData.lat.length);
-        console.log("z rows:", bathyData.z.length);
-        console.log("z cols:", bathyData.z[0].length);
-
-        plot2D();
+        useRawData(rawData, "Loaded gebco_subset.json");
       } catch (error) {
-        console.error("Error loading GEBCO JSON:", error);
-        document.getElementById("status").textContent =
-          "Error loading gebco_subset.json. Check file name, hosting path, and browser console.";
+        console.error("Startup load failed:", error);
+        const localFileHint = window.location.protocol === "file:"
+          ? "\n\nYou opened index.html directly from disk. Many browsers block fetch() from file:// paths. Either click 'Load JSON manually' and select gebco_subset.json, or serve the folder with: python -m http.server 8000"
+          : "";
+        showMessage(
+          "Could not auto-load gebco_subset.json.\n" +
+          "Required: index.html and gebco_subset.json must be in the same folder on the same server.\n" +
+          "Error: " + error.message + localFileHint
+        );
       }
+    }
+
+    function useRawData(rawData, sourceMessage) {
+      hideMessage();
+      bathyData = normalizeBathyData(rawData);
+      const zRange = getZRange(bathyData.z);
+      const status = sourceMessage + " | Lon " + minValue(bathyData.lon).toFixed(4) + " to " + maxValue(bathyData.lon).toFixed(4) +
+        " | Lat " + minValue(bathyData.lat).toFixed(4) + " to " + maxValue(bathyData.lat).toFixed(4) +
+        " | Z " + zRange.zMin.toFixed(1) + " to " + zRange.zMax.toFixed(1) + " m" +
+        " | Grid " + bathyData.z.length + " x " + bathyData.z[0].length;
+      setStatus(status);
+      console.log(status);
+      console.log("lon length:", bathyData.lon.length);
+      console.log("lat length:", bathyData.lat.length);
+      console.log("z rows:", bathyData.z.length);
+      console.log("z cols:", bathyData.z[0].length);
+      plot2D();
     }
 
     function minValue(values) {
@@ -165,17 +221,24 @@
       return matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]));
     }
 
+    function cleanGridValue(value) {
+      if (value === null || value === undefined || value === "") return null;
+      if (Array.isArray(value)) return null;
+      const numericValue = Number(value);
+      return Number.isFinite(numericValue) ? numericValue : null;
+    }
+
     function normalizeBathyData(input) {
+      if (!input || !Array.isArray(input.lon) || !Array.isArray(input.lat) || !Array.isArray(input.z)) {
+        throw new Error("JSON must contain lon, lat, and z arrays.");
+      }
+
       const data = {
         lon: input.lon.map(Number),
         lat: input.lat.map(Number),
-        z: input.z.map(row => row.map(value => {
-          if (value === null || value === undefined || value === "") return null;
-          const numericValue = Number(value);
-          return Number.isFinite(numericValue) ? numericValue : null;
-        })),
-        lease_lon: Array.isArray(input.lease_lon) ? input.lease_lon.map(Number) : defaultLeaseLon,
-        lease_lat: Array.isArray(input.lease_lat) ? input.lease_lat.map(Number) : defaultLeaseLat,
+        z: input.z.map(row => Array.isArray(row) ? row.map(cleanGridValue) : []),
+        lease_lon: Array.isArray(input.lease_lon) ? input.lease_lon.map(Number) : defaultLeaseLon.slice(),
+        lease_lat: Array.isArray(input.lease_lat) ? input.lease_lat.map(Number) : defaultLeaseLat.slice(),
         lonlim: Array.isArray(input.lonlim) ? input.lonlim.map(Number) : null,
         latlim: Array.isArray(input.latlim) ? input.latlim.map(Number) : null,
         color_min: Number.isFinite(Number(input.color_min)) ? Number(input.color_min) : null,
@@ -183,7 +246,7 @@
       };
 
       if (!data.lon.length || !data.lat.length || !data.z.length || !data.z[0].length) {
-        throw new Error("The JSON file does not contain lon, lat, and z arrays.");
+        throw new Error("The JSON file has empty lon, lat, or z arrays.");
       }
 
       if (data.z.length === data.lon.length && data.z[0].length === data.lat.length) {
@@ -191,10 +254,8 @@
       }
 
       if (data.z.length !== data.lat.length || data.z[0].length !== data.lon.length) {
-        throw new Error(
-          `Dimension mismatch: z is ${data.z.length} x ${data.z[0].length}, ` +
-          `lat length is ${data.lat.length}, lon length is ${data.lon.length}.`
-        );
+        throw new Error("Dimension mismatch: z is " + data.z.length + " x " + data.z[0].length +
+          ", lat length is " + data.lat.length + ", lon length is " + data.lon.length + ".");
       }
 
       if (data.lat[0] > data.lat[data.lat.length - 1]) {
@@ -213,7 +274,6 @@
     function getZRange(z) {
       let zMin = Infinity;
       let zMax = -Infinity;
-
       for (let i = 0; i < z.length; i++) {
         for (let j = 0; j < z[i].length; j++) {
           const value = z[i][j];
@@ -223,11 +283,9 @@
           }
         }
       }
-
       if (!Number.isFinite(zMin) || !Number.isFinite(zMax)) {
         throw new Error("No finite elevation values were found in z.");
       }
-
       return { zMin, zMax };
     }
 
@@ -247,272 +305,203 @@
     }
 
     function plot2D() {
-      if (!bathyData) return;
-
-      const { lon, lat, z, lease_lon, lease_lat } = bathyData;
-      const { zMin, zMax } = getColorRange();
-      const { lonMin, lonMax, latMin, latMax } = getAxisBounds();
-
-      const bathymetry = {
-        type: "heatmap",
-        x: lon,
-        y: lat,
-        z: z,
-        colorscale: turboScale,
-        zmin: zMin,
-        zmax: zMax,
-        zsmooth: "best",
-        connectgaps: false,
-        colorbar: {
-          title: { text: "Elevation relative to mean sea level (m)" },
-          ticks: "outside"
-        },
-        hovertemplate:
-          "Lon: %{x:.5f}<br>" +
-          "Lat: %{y:.5f}<br>" +
-          "Elev: %{z:.1f} m<extra></extra>",
-        name: "GEBCO Elevation"
-      };
-
-      const contourLines = {
-        type: "contour",
-        x: lon,
-        y: lat,
-        z: z,
-        zmin: zMin,
-        zmax: zMax,
-        showscale: false,
-        contours: {
-          coloring: "none",
-          showlines: true,
-          start: Math.ceil(zMin / 50) * 50,
-          end: Math.floor(zMax / 50) * 50,
-          size: 50
-        },
-        line: {
-          color: "rgba(0,0,0,0.35)",
-          width: 0.6
-        },
-        hoverinfo: "skip",
-        name: "Contours"
-      };
-
-      const leaseBoundary = {
-        type: "scatter",
-        mode: "lines",
-        x: lease_lon,
-        y: lease_lat,
-        line: { color: "red", width: 2.5 },
-        name: "Lease Boundary",
-        hovertemplate:
-          "Lease Boundary<br>" +
-          "Lon: %{x:.5f}<br>" +
-          "Lat: %{y:.5f}<extra></extra>"
-      };
-
-      const layout = {
-        title: {
-          text: "GEBCO 2025 Bathymetry - Area of Interest",
-          font: { color: "#111111", size: 16 }
-        },
-        paper_bgcolor: "#ffffff",
-        plot_bgcolor: "#ffffff",
-        font: { color: "#111111" },
-        margin: { l: 70, r: 35, t: 50, b: 60 },
-        xaxis: {
-          title: "Longitude",
-          range: [lonMin, lonMax],
-          showgrid: true,
-          gridcolor: "rgba(180,180,180,0.75)",
-          zeroline: false,
-          showline: true,
-          linecolor: "#111111",
-          tickcolor: "#111111",
-          scaleanchor: "y",
-          scaleratio: 1
-        },
-        yaxis: {
-          title: "Latitude",
-          range: [latMin, latMax],
-          showgrid: true,
-          gridcolor: "rgba(180,180,180,0.75)",
-          zeroline: false,
-          showline: true,
-          linecolor: "#111111",
-          tickcolor: "#111111"
-        },
-        legend: {
-          bgcolor: "rgba(255,255,255,0.7)",
-          bordercolor: "rgba(0,0,0,0.2)",
-          borderwidth: 1
+      try {
+        assertPlotlyLoaded();
+        if (!bathyData) {
+          showMessage("No bathymetry data loaded yet. Load gebco_subset.json first.");
+          return;
         }
-      };
 
-      Plotly.newPlot("map", [bathymetry, contourLines, leaseBoundary], layout, {
-        responsive: true,
-        displaylogo: false,
-        scrollZoom: true
-      });
+        hideMessage();
+        const { lon, lat, z, lease_lon, lease_lat } = bathyData;
+        const { zMin, zMax } = getColorRange();
+        const { lonMin, lonMax, latMin, latMax } = getAxisBounds();
+
+        const heatmap = {
+          type: "heatmap",
+          x: lon,
+          y: lat,
+          z: z,
+          colorscale: turboScale,
+          zmin: zMin,
+          zmax: zMax,
+          zsmooth: "best",
+          connectgaps: false,
+          colorbar: { title: { text: "Elevation (m)" } },
+          hovertemplate: "Lon: %{x:.5f}<br>Lat: %{y:.5f}<br>Elev: %{z:.1f} m<extra></extra>",
+          name: "GEBCO elevation"
+        };
+
+        const contours = {
+          type: "contour",
+          x: lon,
+          y: lat,
+          z: z,
+          showscale: false,
+          contours: { coloring: "none", showlines: true },
+          line: { color: "rgba(0,0,0,0.32)", width: 0.6 },
+          hoverinfo: "skip",
+          name: "Contours"
+        };
+
+        const leaseBoundary = {
+          type: "scatter",
+          mode: "lines",
+          x: lease_lon,
+          y: lease_lat,
+          line: { color: "red", width: 3 },
+          name: "Lease Boundary",
+          hovertemplate: "Lease Boundary<br>Lon: %{x:.5f}<br>Lat: %{y:.5f}<extra></extra>"
+        };
+
+        const layout = {
+          title: { text: "GEBCO 2025 Bathymetry - Area of Interest", font: { color: "#111111", size: 16 } },
+          paper_bgcolor: "#ffffff",
+          plot_bgcolor: "#ffffff",
+          font: { color: "#111111" },
+          margin: { l: 70, r: 30, t: 50, b: 60 },
+          xaxis: {
+            title: "Longitude",
+            range: [lonMin, lonMax],
+            showgrid: true,
+            gridcolor: "rgba(0,0,0,0.18)",
+            zeroline: false,
+            showline: true,
+            linecolor: "#222222",
+            tickcolor: "#222222",
+            constrain: "domain"
+          },
+          yaxis: {
+            title: "Latitude",
+            range: [latMin, latMax],
+            showgrid: true,
+            gridcolor: "rgba(0,0,0,0.18)",
+            zeroline: false,
+            showline: true,
+            linecolor: "#222222",
+            tickcolor: "#222222",
+            scaleanchor: "x",
+            scaleratio: 1
+          },
+          legend: { bgcolor: "rgba(255,255,255,0.75)", bordercolor: "rgba(0,0,0,0.2)", borderwidth: 1 }
+        };
+
+        Plotly.newPlot("map", [heatmap, contours, leaseBoundary], layout, {
+          responsive: true,
+          displaylogo: false,
+          scrollZoom: true
+        });
+      } catch (error) {
+        console.error(error);
+        showMessage("Could not draw the 2D plot. Error: " + error.message);
+      }
+    }
+
+    function nearestIndex(values, target) {
+      let bestIndex = 0;
+      let bestDistance = Infinity;
+      for (let i = 0; i < values.length; i++) {
+        const distance = Math.abs(values[i] - target);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = i;
+        }
+      }
+      return bestIndex;
     }
 
     function interpolateNearestElevation(lonValue, latValue) {
-      const lon = bathyData.lon;
-      const lat = bathyData.lat;
-      const z = bathyData.z;
-
-      let lonIndex = 0;
-      let latIndex = 0;
-      let lonDistance = Infinity;
-      let latDistance = Infinity;
-
-      for (let i = 0; i < lon.length; i++) {
-        const distance = Math.abs(lon[i] - lonValue);
-        if (distance < lonDistance) {
-          lonDistance = distance;
-          lonIndex = i;
-        }
-      }
-
-      for (let i = 0; i < lat.length; i++) {
-        const distance = Math.abs(lat[i] - latValue);
-        if (distance < latDistance) {
-          latDistance = distance;
-          latIndex = i;
-        }
-      }
-
-      return z[latIndex][lonIndex];
+      if (!bathyData) return null;
+      const i = nearestIndex(bathyData.lat, latValue);
+      const j = nearestIndex(bathyData.lon, lonValue);
+      const value = bathyData.z[i][j];
+      return Number.isFinite(value) ? value : null;
     }
 
     function plot3D() {
-      if (!bathyData) return;
-
-      const { lon, lat, z, lease_lon, lease_lat } = bathyData;
-      const { zMin, zMax } = getColorRange();
-
-      const lon0 = lon.reduce((a, b) => a + b, 0) / lon.length;
-      const lat0 = lat.reduce((a, b) => a + b, 0) / lat.length;
-      const kmPerDegLat = 111.32;
-      const kmPerDegLon = 111.32 * Math.cos(lat0 * Math.PI / 180);
-
-      const xKm = lon.map(value => (value - lon0) * kmPerDegLon);
-      const yKm = lat.map(value => (value - lat0) * kmPerDegLat);
-
-      const verticalExaggeration = 8;
-      const zKmExag = z.map(row =>
-        row.map(value => Number.isFinite(value) ? (value / 1000) * verticalExaggeration : null)
-      );
-
-      const surface = {
-        type: "surface",
-        x: xKm,
-        y: yKm,
-        z: zKmExag,
-        surfacecolor: z,
-        cmin: zMin,
-        cmax: zMax,
-        colorscale: turboScale,
-        colorbar: {
-          title: { text: "Elevation (m)" },
-          ticks: "outside"
-        },
-        contours: {
-          z: {
-            show: true,
-            usecolormap: true,
-            highlightcolor: "#ffffff",
-            project: { z: true }
-          }
-        },
-        lighting: {
-          ambient: 0.45,
-          diffuse: 0.85,
-          specular: 0.12,
-          roughness: 0.7,
-          fresnel: 0.2
-        },
-        lightposition: { x: 100, y: 200, z: 1000 },
-        customdata: z,
-        hovertemplate:
-          "X: %{x:.2f} km<br>" +
-          "Y: %{y:.2f} km<br>" +
-          "Elevation: %{customdata:.1f} m<br>" +
-          "<extra></extra>",
-        name: "GEBCO Bathymetry"
-      };
-
-      const leaseXKm = lease_lon.map(value => (value - lon0) * kmPerDegLon);
-      const leaseYKm = lease_lat.map(value => (value - lat0) * kmPerDegLat);
-      const leaseZKm = lease_lon.map((value, index) => {
-        const elevation = interpolateNearestElevation(value, lease_lat[index]);
-        return Number.isFinite(elevation) ? (elevation / 1000) * verticalExaggeration + 0.03 : 0.03;
-      });
-
-      const leaseBoundary3D = {
-        type: "scatter3d",
-        mode: "lines",
-        x: leaseXKm,
-        y: leaseYKm,
-        z: leaseZKm,
-        line: { color: "red", width: 8 },
-        name: "Lease Boundary",
-        hovertemplate:
-          "Lease Boundary<br>" +
-          "X: %{x:.2f} km<br>" +
-          "Y: %{y:.2f} km<extra></extra>"
-      };
-
-      const layout = {
-        title: {
-          text: `GEBCO 2025 3D Bathymetry Relief - Vertical Exaggeration x${verticalExaggeration}`,
-          font: { color: "#111111", size: 16 }
-        },
-        paper_bgcolor: "#ffffff",
-        plot_bgcolor: "#ffffff",
-        font: { color: "#111111" },
-        margin: { l: 0, r: 0, t: 50, b: 0 },
-        scene: {
-          bgcolor: "#ffffff",
-          xaxis: {
-            title: "East-West Distance (km)",
-            backgroundcolor: "#ffffff",
-            gridcolor: "#d0d0d0",
-            zerolinecolor: "#777777",
-            color: "#111111"
-          },
-          yaxis: {
-            title: "North-South Distance (km)",
-            backgroundcolor: "#ffffff",
-            gridcolor: "#d0d0d0",
-            zerolinecolor: "#777777",
-            color: "#111111"
-          },
-          zaxis: {
-            title: `Elevation x${verticalExaggeration} (km)`,
-            backgroundcolor: "#ffffff",
-            gridcolor: "#d0d0d0",
-            zerolinecolor: "#777777",
-            color: "#111111"
-          },
-          aspectmode: "manual",
-          aspectratio: { x: 1.35, y: 1.0, z: 0.45 },
-          camera: {
-            eye: { x: 1.55, y: -1.65, z: 0.85 },
-            center: { x: 0, y: 0, z: -0.15 }
-          }
-        },
-        legend: {
-          bgcolor: "rgba(255,255,255,0.7)",
-          bordercolor: "rgba(0,0,0,0.2)",
-          borderwidth: 1
+      try {
+        assertPlotlyLoaded();
+        if (!bathyData) {
+          showMessage("No bathymetry data loaded yet. Load gebco_subset.json first.");
+          return;
         }
-      };
 
-      Plotly.newPlot("map", [surface, leaseBoundary3D], layout, {
-        responsive: true,
-        displaylogo: false,
-        scrollZoom: true
-      });
+        hideMessage();
+        const { lon, lat, z, lease_lon, lease_lat } = bathyData;
+        const { zMin, zMax } = getColorRange();
+
+        const lon0 = lon.reduce((a, b) => a + b, 0) / lon.length;
+        const lat0 = lat.reduce((a, b) => a + b, 0) / lat.length;
+        const kmPerDegLat = 111.32;
+        const kmPerDegLon = 111.32 * Math.cos(lat0 * Math.PI / 180);
+        const xKm = lon.map(value => (value - lon0) * kmPerDegLon);
+        const yKm = lat.map(value => (value - lat0) * kmPerDegLat);
+        const verticalExaggeration = 8;
+        const zKmExag = z.map(row => row.map(value => Number.isFinite(value) ? (value / 1000) * verticalExaggeration : null));
+
+        const surface = {
+          type: "surface",
+          x: xKm,
+          y: yKm,
+          z: zKmExag,
+          surfacecolor: z,
+          cmin: zMin,
+          cmax: zMax,
+          colorscale: turboScale,
+          colorbar: { title: { text: "Elevation (m)" } },
+          contours: { z: { show: true, usecolormap: true, highlightcolor: "white", project: { z: true } } },
+          lighting: { ambient: 0.35, diffuse: 0.85, specular: 0.15, roughness: 0.65, fresnel: 0.2 },
+          lightposition: { x: 100, y: 200, z: 1000 },
+          customdata: z,
+          hovertemplate: "X: %{x:.2f} km<br>Y: %{y:.2f} km<br>Elevation: %{customdata:.1f} m<extra></extra>",
+          name: "GEBCO Bathymetry"
+        };
+
+        const leaseXKm = lease_lon.map(value => (value - lon0) * kmPerDegLon);
+        const leaseYKm = lease_lat.map(value => (value - lat0) * kmPerDegLat);
+        const leaseZKm = lease_lon.map((value, index) => {
+          const elevation = interpolateNearestElevation(value, lease_lat[index]);
+          return Number.isFinite(elevation) ? (elevation / 1000) * verticalExaggeration + 0.03 : 0.03;
+        });
+
+        const leaseBoundary3D = {
+          type: "scatter3d",
+          mode: "lines",
+          x: leaseXKm,
+          y: leaseYKm,
+          z: leaseZKm,
+          line: { color: "red", width: 8 },
+          name: "Lease Boundary",
+          hovertemplate: "Lease Boundary<br>X: %{x:.2f} km<br>Y: %{y:.2f} km<extra></extra>"
+        };
+
+        const layout = {
+          title: { text: "GEBCO 2025 3D Bathymetry Relief - Vertical Exaggeration x" + verticalExaggeration, font: { color: "#111111", size: 16 } },
+          paper_bgcolor: "#ffffff",
+          plot_bgcolor: "#ffffff",
+          font: { color: "#111111" },
+          margin: { l: 0, r: 0, t: 50, b: 0 },
+          scene: {
+            bgcolor: "#ffffff",
+            xaxis: { title: "East-West Distance (km)", backgroundcolor: "#ffffff", gridcolor: "#d0d0d0", zerolinecolor: "#777777", color: "#111111" },
+            yaxis: { title: "North-South Distance (km)", backgroundcolor: "#ffffff", gridcolor: "#d0d0d0", zerolinecolor: "#777777", color: "#111111" },
+            zaxis: { title: "Elevation x" + verticalExaggeration + " (km)", backgroundcolor: "#ffffff", gridcolor: "#d0d0d0", zerolinecolor: "#777777", color: "#111111" },
+            aspectmode: "manual",
+            aspectratio: { x: 1.35, y: 1.0, z: 0.45 },
+            camera: { eye: { x: 1.55, y: -1.65, z: 0.85 }, center: { x: 0, y: 0, z: -0.15 } }
+          },
+          legend: { bgcolor: "rgba(255,255,255,0.75)", bordercolor: "rgba(0,0,0,0.2)", borderwidth: 1 }
+        };
+
+        Plotly.newPlot("map", [surface, leaseBoundary3D], layout, {
+          responsive: true,
+          displaylogo: false,
+          scrollZoom: true
+        });
+      } catch (error) {
+        console.error(error);
+        showMessage("Could not draw the 3D plot. Error: " + error.message);
+      }
     }
 
     loadData();
