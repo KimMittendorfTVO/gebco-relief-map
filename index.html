@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>GEBCO Bathymetry Relief Map</title>
+
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      background: black;
+      color: white;
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    .page {
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+      padding: 10px;
+      gap: 8px;
+    }
+
+    .header {
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .title {
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button {
+      background: white;
+      color: black;
+      border: none;
+      padding: 7px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    button:hover {
+      background: #e6e6e6;
+    }
+
+    #map {
+      flex: 1;
+      width: 100%;
+      min-height: 0;
+      border: 1px solid #222;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .status {
+      font-size: 12px;
+      color: #ccc;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="page">
+
+    <div class="header">
+      <div>
+        <div class="title">GEBCO 2025 Bathymetry - Area of Interest</div>
+        <div class="status" id="status">Loading gebco_subset.json...</div>
+      </div>
+
+      <div class="controls">
+        <button onclick="plot2D()">2D Relief</button>
+        <button onclick="plot3D()">3D Surface</button>
+      </div>
+    </div>
+
+    <div id="map"></div>
+
+  </div>
+
+  <script>
+    let bathyData = null;
+
+    const leaseLon = [
+      -117.816670,
+      -116.066667,
+      -116.066667,
+      -117.816670,
+      -117.816670
+    ];
+
+    const leaseLat = [
+      11.08333,
+      11.08333,
+      9.89500,
+      9.89500,
+      11.08333
+    ];
+
+    async function loadData() {
+      try {
+        const response = await fetch("gebco_subset.json");
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        bathyData = await response.json();
+
+        document.getElementById("status").textContent =
+          "Loaded gebco_subset.json";
+
+        plot2D();
+      } catch (error) {
+        console.error("Error loading GEBCO JSON:", error);
+
+        document.getElementById("status").textContent =
+          "Error loading gebco_subset.json. Check file name, hosting path, and browser console.";
+      }
+    }
+
+    function getZRange(z) {
+      let zMin = Infinity;
+      let zMax = -Infinity;
+
+      for (let i = 0; i < z.length; i++) {
+        for (let j = 0; j < z[i].length; j++) {
+          const value = z[i][j];
+
+          if (Number.isFinite(value)) {
+            zMin = Math.min(zMin, value);
+            zMax = Math.max(zMax, value);
+          }
+        }
+      }
+
+      return { zMin, zMax };
+    }
+
+    function plot2D() {
+      if (!bathyData) return;
+
+      const { lon, lat, z } = bathyData;
+      const { zMin, zMax } = getZRange(z);
+
+      const bathymetry = {
+        type: "contour",
+        x: lon,
+        y: lat,
+        z: z,
+        colorscale: "Jet",
+        zmin: zMin,
+        zmax: zMax,
+        contours: {
+          coloring: "heatmap",
+          showlines: false
+        },
+        colorbar: {
+          title: {
+            text: "Elevation (m)",
+            font: { color: "white" }
+          },
+          tickfont: { color: "white" }
+        },
+        hovertemplate:
+          "Lon: %{x:.5f}<br>" +
+          "Lat: %{y:.5f}<br>" +
+          "Elev: %{z:.1f} m<extra></extra>",
+        name: "GEBCO Elevation"
+      };
+
+      const leaseBoundary = {
+        type: "scatter",
+        mode: "lines",
+        x: leaseLon,
+        y: leaseLat,
+        line: {
+          color: "red",
+          width: 3
+        },
+        name: "Lease Boundary",
+        hovertemplate:
+          "Lease Boundary<br>" +
+          "Lon: %{x:.5f}<br>" +
+          "Lat: %{y:.5f}<extra></extra>"
+      };
+
+      const layout = {
+        title: {
+          text: "GEBCO 2025 Bathymetry - Area of Interest",
+          font: { color: "white", size: 16 }
+        },
+        paper_bgcolor: "black",
+        plot_bgcolor: "black",
+        font: { color: "white" },
+        margin: {
+          l: 70,
+          r: 30,
+          t: 50,
+          b: 60
+        },
+        xaxis: {
+          title: "Longitude",
+          showgrid: true,
+          gridcolor: "#444",
+          zeroline: false,
+          showline: true,
+          linecolor: "white",
+          tickcolor: "white",
+          scaleanchor: "y"
+        },
+        yaxis: {
+          title: "Latitude",
+          showgrid: true,
+          gridcolor: "#444",
+          zeroline: false,
+          showline: true,
+          linecolor: "white",
+          tickcolor: "white"
+        },
+        legend: {
+          bgcolor: "rgba(0,0,0,0.5)",
+          font: { color: "white" }
+        }
+      };
+
+      Plotly.newPlot("map", [bathymetry, leaseBoundary], layout, {
+        responsive: true,
+        displaylogo: false,
+        scrollZoom: true
+      });
+    }
+
+    function plot3D() {
+      if (!bathyData) return;
+
+      const { lon, lat, z } = bathyData;
+
+      const surface = {
+        type: "surface",
+        x: lon,
+        y: lat,
+        z: z,
+        colorscale: "Jet",
+        colorbar: {
+          title: {
+            text: "Elevation (m)",
+            font: { color: "white" }
+          },
+          tickfont: { color: "white" }
+        },
+        hovertemplate:
+          "Lon: %{x:.5f}<br>" +
+          "Lat: %{y:.5f}<br>" +
+          "Elev: %{z:.1f} m<extra></extra>",
+        name: "GEBCO Elevation"
+      };
+
+      const leaseBoundary3D = {
+        type: "scatter3d",
+        mode: "lines",
+        x: leaseLon,
+        y: leaseLat,
+        z: leaseLon.map(() => 0),
+        line: {
+          color: "red",
+          width: 6
+        },
+        name: "Lease Boundary"
+      };
+
+      const layout = {
+        title: {
+          text: "GEBCO 2025 3D Bathymetry - Area of Interest",
+          font: { color: "white", size: 16 }
+        },
+        paper_bgcolor: "black",
+        plot_bgcolor: "black",
+        font: { color: "white" },
+        margin: {
+          l: 0,
+          r: 0,
+          t: 50,
+          b: 0
+        },
+        scene: {
+          xaxis: {
+            title: "Longitude",
+            backgroundcolor: "black",
+            gridcolor: "#444",
+            zerolinecolor: "#666",
+            color: "white"
+          },
+          yaxis: {
+            title: "Latitude",
+            backgroundcolor: "black",
+            gridcolor: "#444",
+            zerolinecolor: "#666",
+            color: "white"
+          },
+          zaxis: {
+            title: "Elevation (m)",
+            backgroundcolor: "black",
+            gridcolor: "#444",
+            zerolinecolor: "#666",
+            color: "white"
+          },
+          camera: {
+            eye: {
+              x: 1.5,
+              y: 1.5,
+              z: 0.8
+            }
+          }
+        },
+        legend: {
+          bgcolor: "rgba(0,0,0,0.5)",
+          font: { color: "white" }
+        }
+      };
+
+      Plotly.newPlot("map", [surface, leaseBoundary3D], layout, {
+        responsive: true,
+        displaylogo: false,
+        scrollZoom: true
+      });
+    }
+
+    loadData();
+  </script>
+
+</body>
+</html>
