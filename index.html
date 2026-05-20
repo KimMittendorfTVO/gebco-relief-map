@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GEBCO 2025 Bathymetry - High Resolution Viewer</title>
+  <title>GEBCO 2025 Bathymetry - Area of Interest</title>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <style>
     html, body {
       height: 100%;
       width: 100%;
       margin: 0;
-      background: #ffffff;
-      color: #111111;
+      background: #000000;
+      color: #ffffff;
       font-family: Arial, Helvetica, sans-serif;
       overflow: hidden;
     }
@@ -38,7 +38,7 @@
     }
     .status {
       font-size: 12px;
-      color: #444444;
+      color: #cccccc;
       margin-top: 2px;
       max-width: 1100px;
     }
@@ -49,8 +49,8 @@
       flex-wrap: wrap;
     }
     button, .file-label {
-      background: #ffffff;
-      color: #111111;
+      background: #111111;
+      color: #ffffff;
       border: 1px solid #777777;
       padding: 7px 12px;
       border-radius: 4px;
@@ -59,7 +59,7 @@
       line-height: 1.2;
     }
     button:hover, .file-label:hover {
-      background: #e9e9e9;
+      background: #333333;
     }
     input[type="file"] {
       display: none;
@@ -68,10 +68,10 @@
       flex: 1;
       width: 100%;
       min-height: 0;
-      border: 1px solid #cfcfcf;
+      border: 1px solid #333333;
       border-radius: 6px;
       overflow: hidden;
-      background: #ffffff;
+      background: #000000;
     }
     #message {
       position: absolute;
@@ -80,10 +80,10 @@
       right: 20px;
       z-index: 5;
       padding: 12px 14px;
-      border: 1px solid #b5b5b5;
+      border: 1px solid #555555;
       border-radius: 6px;
-      background: #fff8db;
-      color: #111111;
+      background: #151515;
+      color: #ffffff;
       font-size: 13px;
       line-height: 1.35;
       display: none;
@@ -95,7 +95,7 @@
   <div class="page">
     <div class="header">
       <div>
-        <div class="title">GEBCO 2025 Bathymetry - High Resolution Viewer</div>
+        <div class="title">GEBCO 2025 Bathymetry - Area of Interest</div>
         <div class="status" id="status">Starting viewer...</div>
       </div>
       <div class="controls">
@@ -199,23 +199,14 @@
       const status = sourceMessage + " | Lon " + minValue(bathyData.lon).toFixed(4) + " to " + maxValue(bathyData.lon).toFixed(4) +
         " | Lat " + minValue(bathyData.lat).toFixed(4) + " to " + maxValue(bathyData.lat).toFixed(4) +
         " | Z " + zRange.zMin.toFixed(1) + " to " + zRange.zMax.toFixed(1) + " m" +
-        " | Grid " + bathyData.z.length + " x " + bathyData.z[0].length + getMetaStatus(bathyData);
+        " | Grid " + bathyData.z.length + " x " + bathyData.z[0].length;
       setStatus(status);
       console.log(status);
       console.log("lon length:", bathyData.lon.length);
       console.log("lat length:", bathyData.lat.length);
       console.log("z rows:", bathyData.z.length);
       console.log("z cols:", bathyData.z[0].length);
-      plot2D();
-    }
-
-
-    function getMetaStatus(data) {
-      if (!data || !data.meta) return "";
-      const parts = [];
-      if (Number.isFinite(Number(data.meta.native_step))) parts.push("native step " + data.meta.native_step);
-      if (Number.isFinite(Number(data.meta.interp_factor))) parts.push("interp x" + data.meta.interp_factor);
-      return parts.length ? " | " + parts.join(", ") : "";
+      plot3D();
     }
 
     function minValue(values) {
@@ -251,8 +242,7 @@
         lonlim: Array.isArray(input.lonlim) ? input.lonlim.map(Number) : null,
         latlim: Array.isArray(input.latlim) ? input.latlim.map(Number) : null,
         color_min: Number.isFinite(Number(input.color_min)) ? Number(input.color_min) : null,
-        color_max: Number.isFinite(Number(input.color_max)) ? Number(input.color_max) : null,
-        meta: input.meta || null
+        color_max: Number.isFinite(Number(input.color_max)) ? Number(input.color_max) : null
       };
 
       if (!data.lon.length || !data.lat.length || !data.z.length || !data.z[0].length) {
@@ -337,7 +327,12 @@
           zmax: zMax,
           zsmooth: "best",
           connectgaps: false,
-          colorbar: { title: { text: "Elevation (m)" } },
+          colorbar: {
+            title: { text: "Elevation (m)", font: { color: "#ffffff" } },
+            tickfont: { color: "#ffffff" },
+            x: 1.02,
+            len: 0.82
+          },
           hovertemplate: "Lon: %{x:.5f}<br>Lat: %{y:.5f}<br>Elev: %{z:.1f} m<extra></extra>",
           name: "GEBCO elevation"
         };
@@ -365,35 +360,44 @@
         };
 
         const layout = {
-          title: { text: "GEBCO 2025 Bathymetry - Area of Interest", font: { color: "#111111", size: 16 } },
-          paper_bgcolor: "#ffffff",
-          plot_bgcolor: "#ffffff",
-          font: { color: "#111111" },
-          margin: { l: 70, r: 30, t: 50, b: 60 },
+          title: { text: "GEBCO 2025 Bathymetry - Area of Interest", font: { color: "#ffffff", size: 16 } },
+          paper_bgcolor: "#000000",
+          plot_bgcolor: "#000000",
+          font: { color: "#ffffff" },
+          margin: { l: 70, r: 190, t: 50, b: 60 },
           xaxis: {
             title: "Longitude",
             range: [lonMin, lonMax],
             showgrid: true,
-            gridcolor: "rgba(0,0,0,0.18)",
+            gridcolor: "rgba(255,255,255,0.20)",
             zeroline: false,
             showline: true,
-            linecolor: "#222222",
-            tickcolor: "#222222",
+            linecolor: "#ffffff",
+            tickcolor: "#ffffff",
             constrain: "domain"
           },
           yaxis: {
             title: "Latitude",
             range: [latMin, latMax],
             showgrid: true,
-            gridcolor: "rgba(0,0,0,0.18)",
+            gridcolor: "rgba(255,255,255,0.20)",
             zeroline: false,
             showline: true,
-            linecolor: "#222222",
-            tickcolor: "#222222",
+            linecolor: "#ffffff",
+            tickcolor: "#ffffff",
             scaleanchor: "x",
             scaleratio: 1
           },
-          legend: { bgcolor: "rgba(255,255,255,0.75)", bordercolor: "rgba(0,0,0,0.2)", borderwidth: 1 }
+          legend: {
+            x: 1.02,
+            y: 0.98,
+            xanchor: "left",
+            yanchor: "top",
+            bgcolor: "rgba(0,0,0,0.85)",
+            bordercolor: "rgba(255,255,255,0.55)",
+            borderwidth: 1,
+            font: { color: "#ffffff" }
+          }
         };
 
         Plotly.newPlot("map", [heatmap, contours, leaseBoundary], layout, {
@@ -458,13 +462,19 @@
           cmin: zMin,
           cmax: zMax,
           colorscale: turboScale,
-          colorbar: { title: { text: "Elevation (m)" } },
+          colorbar: {
+            title: { text: "Elevation (m)", font: { color: "#ffffff" } },
+            tickfont: { color: "#ffffff" },
+            x: 1.02,
+            len: 0.78
+          },
           contours: { z: { show: true, usecolormap: true, highlightcolor: "white", project: { z: true } } },
           lighting: { ambient: 0.35, diffuse: 0.85, specular: 0.15, roughness: 0.65, fresnel: 0.2 },
           lightposition: { x: 100, y: 200, z: 1000 },
           customdata: z,
           hovertemplate: "X: %{x:.2f} km<br>Y: %{y:.2f} km<br>Elevation: %{customdata:.1f} m<extra></extra>",
-          name: "GEBCO Bathymetry"
+          name: "GEBCO Bathymetry",
+          showlegend: false
         };
 
         const leaseXKm = lease_lon.map(value => (value - lon0) * kmPerDegLon);
@@ -486,21 +496,30 @@
         };
 
         const layout = {
-          title: { text: "GEBCO 2025 3D Bathymetry Relief - Vertical Exaggeration x" + verticalExaggeration, font: { color: "#111111", size: 16 } },
-          paper_bgcolor: "#ffffff",
-          plot_bgcolor: "#ffffff",
-          font: { color: "#111111" },
-          margin: { l: 0, r: 0, t: 50, b: 0 },
+          title: { text: "GEBCO 2025 3D Bathymetry Relief - Vertical Exaggeration x" + verticalExaggeration, font: { color: "#ffffff", size: 16 } },
+          paper_bgcolor: "#000000",
+          plot_bgcolor: "#000000",
+          font: { color: "#ffffff" },
+          margin: { l: 0, r: 240, t: 50, b: 0 },
           scene: {
-            bgcolor: "#ffffff",
-            xaxis: { title: "East-West Distance (km)", backgroundcolor: "#ffffff", gridcolor: "#d0d0d0", zerolinecolor: "#777777", color: "#111111" },
-            yaxis: { title: "North-South Distance (km)", backgroundcolor: "#ffffff", gridcolor: "#d0d0d0", zerolinecolor: "#777777", color: "#111111" },
-            zaxis: { title: "Elevation x" + verticalExaggeration + " (km)", backgroundcolor: "#ffffff", gridcolor: "#d0d0d0", zerolinecolor: "#777777", color: "#111111" },
+            bgcolor: "#000000",
+            xaxis: { title: "East-West Distance (km)", backgroundcolor: "#000000", gridcolor: "#333333", zerolinecolor: "#777777", color: "#ffffff" },
+            yaxis: { title: "North-South Distance (km)", backgroundcolor: "#000000", gridcolor: "#333333", zerolinecolor: "#777777", color: "#ffffff" },
+            zaxis: { title: "Elevation x" + verticalExaggeration + " (km)", backgroundcolor: "#000000", gridcolor: "#333333", zerolinecolor: "#777777", color: "#ffffff" },
             aspectmode: "manual",
             aspectratio: { x: 1.35, y: 1.0, z: 0.45 },
             camera: { eye: { x: 1.55, y: -1.65, z: 0.85 }, center: { x: 0, y: 0, z: -0.15 } }
           },
-          legend: { bgcolor: "rgba(255,255,255,0.75)", bordercolor: "rgba(0,0,0,0.2)", borderwidth: 1 }
+          legend: {
+            x: 1.16,
+            y: 0.98,
+            xanchor: "left",
+            yanchor: "top",
+            bgcolor: "rgba(0,0,0,0.85)",
+            bordercolor: "rgba(255,255,255,0.55)",
+            borderwidth: 1,
+            font: { color: "#ffffff" }
+          }
         };
 
         Plotly.newPlot("map", [surface, leaseBoundary3D], layout, {
