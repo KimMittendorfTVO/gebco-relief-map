@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GEBCO 2025 Bathymetry - High Resolution Viewer</title>
+  <title>GEBCO 2025 Bathymetry - Area of Interest</title>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <style>
     html, body {
@@ -95,7 +95,7 @@
   <div class="page">
     <div class="header">
       <div>
-        <div class="title">GEBCO 2025 Bathymetry - High Resolution Viewer</div>
+        <div class="title">GEBCO 2025 Bathymetry - Area of Interest</div>
         <div class="status" id="status">Starting viewer...</div>
       </div>
       <div class="controls">
@@ -199,7 +199,7 @@
       const status = sourceMessage + " | Lon " + minValue(bathyData.lon).toFixed(4) + " to " + maxValue(bathyData.lon).toFixed(4) +
         " | Lat " + minValue(bathyData.lat).toFixed(4) + " to " + maxValue(bathyData.lat).toFixed(4) +
         " | Z " + zRange.zMin.toFixed(1) + " to " + zRange.zMax.toFixed(1) + " m" +
-        " | Grid " + bathyData.z.length + " x " + bathyData.z[0].length + getMetaStatus(bathyData);
+        " | Grid " + bathyData.z.length + " x " + bathyData.z[0].length;
       setStatus(status);
       console.log(status);
       console.log("lon length:", bathyData.lon.length);
@@ -207,15 +207,6 @@
       console.log("z rows:", bathyData.z.length);
       console.log("z cols:", bathyData.z[0].length);
       plot2D();
-    }
-
-
-    function getMetaStatus(data) {
-      if (!data || !data.meta) return "";
-      const parts = [];
-      if (Number.isFinite(Number(data.meta.native_step))) parts.push("native step " + data.meta.native_step);
-      if (Number.isFinite(Number(data.meta.interp_factor))) parts.push("interp x" + data.meta.interp_factor);
-      return parts.length ? " | " + parts.join(", ") : "";
     }
 
     function minValue(values) {
@@ -251,8 +242,7 @@
         lonlim: Array.isArray(input.lonlim) ? input.lonlim.map(Number) : null,
         latlim: Array.isArray(input.latlim) ? input.latlim.map(Number) : null,
         color_min: Number.isFinite(Number(input.color_min)) ? Number(input.color_min) : null,
-        color_max: Number.isFinite(Number(input.color_max)) ? Number(input.color_max) : null,
-        meta: input.meta || null
+        color_max: Number.isFinite(Number(input.color_max)) ? Number(input.color_max) : null
       };
 
       if (!data.lon.length || !data.lat.length || !data.z.length || !data.z[0].length) {
